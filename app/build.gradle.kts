@@ -16,6 +16,8 @@ android {
         targetSdk = 35
         versionCode = buildNumber
         versionName = "0.1.$buildNumber"
+        // Only 64-bit ARM phones; drops native code for other processors.
+        ndk { abiFilters += "arm64-v8a" }
     }
 
     // A fixed debug key is kept in the repo so every CI build can be installed
@@ -31,6 +33,14 @@ android {
 
     buildTypes {
         debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
+        // The APK published by CI: unused code and resources are stripped (R8),
+        // signed with the same fixed key so it installs over earlier builds.
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
             signingConfig = signingConfigs.getByName("debug")
         }
     }
