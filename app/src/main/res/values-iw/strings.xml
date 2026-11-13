@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="open">פתח</string>
+    <string name="save">שמור</string>
+    <string name="undo">בטל</string>
+    <string name="redo">בצע שוב</string>
+    <string name="fit">התאם למסך</string>
+    <string name="select">בחירה</string>
+    <string name="draw">ציור</string>
+    <string name="crop">חיתוך</string>
+    <string name="rotate">סיבוב</string>
+    <string name="add_image">+ תמונה</string>
+    <string name="add_text">+ טקסט</string>
+    <string name="paste">הדבק</string>
+    <string name="more">עוד</string>
+    <string name="rotate_left">סיבוב שמאלה</string>
+    <string name="resize">מתיחה / שינוי גודל</string>
+    <string name="merge_all">מיזוג כל השכבות</string>
+    <string name="save_png">תמונה (PNG)</string>
+    <string name="save_jpg">תמונה (JPG)</string>
+    <string name="save_project">פרויקט (SVG)</string>
+    <string name="apply">החל</string>
+    <string name="cancel">ביטול</string>
+    <string name="ok">אישור</string>
+    <string name="delete">מחק</string>
+    <string name="duplicate">שכפל</string>
+    <string name="forward">קדימה</string>
+    <string name="backward">אחורה</string>
+    <string name="lock">נעל</string>
+    <string name="unlock">שחרר נעילה</string>
+    <string name="edit">ערוך</string>
+    <string name="bold">מודגש</string>
+    <string name="italic">נטוי</string>
+    <string name="width">רוחב</string>
+    <string name="height">גובה</string>
+    <string name="text_hint">טקסט</string>
+    <string name="saved">נשמר</string>
+    <string name="error">משהו השתבש</string>
+    <string name="clipboard_empty">אין מה להדביק</string>
+    <string name="open_image">פתח תמונה או פרויקט</string>
+    <string name="empty_hint">פתח תמונה כדי להתחיל לערוך</string>
+</resources>

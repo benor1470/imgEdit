@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">imgEdit</string>
+    <string name="open">Open</string>
+    <string name="save">Save</string>
+    <string name="undo">Undo</string>
+    <string name="redo">Redo</string>
+    <string name="fit">Fit</string>
+    <string name="select">Select</string>
+    <string name="draw">Draw</string>
+    <string name="crop">Crop</string>
+    <string name="rotate">Rotate</string>
+    <string name="add_image">+ Image</string>
+    <string name="add_text">+ Text</string>
+    <string name="paste">Paste</string>
+    <string name="more">More</string>
+    <string name="rotate_left">Rotate left</string>
+    <string name="resize">Stretch / resize</string>
+    <string name="merge_all">Merge all layers</string>
+    <string name="save_png">Image (PNG)</string>
+    <string name="save_jpg">Image (JPG)</string>
+    <string name="save_project">Project (SVG)</string>
+    <string name="apply">Apply</string>
+    <string name="cancel">Cancel</string>
+    <string name="ok">OK</string>
+    <string name="delete">Delete</string>
+    <string name="duplicate">Duplicate</string>
+    <string name="forward">Forward</string>
+    <string name="backward">Backward</string>
+    <string name="lock">Lock</string>
+    <string name="unlock">Unlock</string>
+    <string name="edit">Edit</string>
+    <string name="bold">Bold</string>
+    <string name="italic">Italic</string>
+    <string name="width">Width</string>
+    <string name="height">Height</string>
+    <string name="text_hint">Text</string>
+    <string name="saved">Saved</string>
+    <string name="error">Something went wrong</string>
+    <string name="clipboard_empty">Nothing to paste</string>
+    <string name="open_image">Open image or project</string>
+    <string name="empty_hint">Open a picture to start editing</string>
+</resources>
