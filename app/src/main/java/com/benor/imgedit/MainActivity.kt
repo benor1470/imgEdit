@@ -15,17 +15,27 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.Modifier
 
 class MainActivity : ComponentActivity() {
+    private val st = EditorState()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        Fonts.init(this)
+        Projects.init(this)
         val initial = intentUri(intent)
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
-                    EditorScreen(initial)
+                    EditorScreen(st, initial)
                 }
             }
         }
+    }
+
+    /** Leaving the app: keep the work as a new version of the project. */
+    override fun onStop() {
+        super.onStop()
+        st.saveVersion()
     }
 
     /** Picture handed to us by another app ("Share" / "Open with" / "Edit"). */

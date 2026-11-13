@@ -154,6 +154,7 @@ private suspend fun PointerInputScope.editorGestures(st: EditorState) {
         val slop = viewConfiguration.touchSlop
         val hitR = 28.dp.toPx()
         val startDoc = st.toDoc(down.position)
+        val selectedBefore = st.selectedId
 
         var drag = Drag.None
         var handle: Handle? = null
@@ -328,6 +329,10 @@ private suspend fun PointerInputScope.editorGestures(st: EditorState) {
         // Finger(s) lifted
         if (drag == Drag.Draw) {
             if (multi) st.stroke.clear() else st.finishStroke()
+        } else if (!moved && !multi && drag == Drag.Move) {
+            // Tap on a text that was already selected: edit it.
+            val e = st.doc?.find(st.selectedId)
+            if (e is TextEl && e.id == selectedBefore) st.editRequest = e.id
         } else if (!moved && !multi && st.tool == Tool.Select && drag == Drag.Pan) {
             // Tap on nothing movable: clear the selection, or pick a locked element (the base picture).
             if (st.selectedId != null) {

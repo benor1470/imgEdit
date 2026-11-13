@@ -63,6 +63,15 @@ data class ImageEl(
     override fun edit(xf: Xf, locked: Boolean, id: Long): El = copy(xf = xf, locked = locked, id = id)
 }
 
+const val LOOK_PLAIN = 0
+const val LOOK_OUTLINE = 1
+const val LOOK_SHADOW = 2
+const val LOOK_BOX = 3
+
+const val ALIGN_CENTER = 0
+const val ALIGN_LEFT = 1
+const val ALIGN_RIGHT = 2
+
 data class TextEl(
     override val id: Long,
     override val xf: Xf,
@@ -73,9 +82,14 @@ data class TextEl(
     val bold: Boolean = false,
     val italic: Boolean = false,
     override val locked: Boolean = false,
+    /** One of LOOK_*: plain, outlined letters, drop shadow, or a filled box behind the text. */
+    val look: Int = LOOK_PLAIN,
+    /** Outline or box colour. */
+    val color2: Int = 0xFF000000.toInt(),
+    val align: Int = ALIGN_CENTER,
 ) : El() {
     val paint: Paint by lazy {
-        val style = when {
+        val face = when {
             bold && italic -> Typeface.BOLD_ITALIC
             bold -> Typeface.BOLD
             italic -> Typeface.ITALIC
@@ -84,17 +98,65 @@ data class TextEl(
         val p = Paint(Paint.ANTI_ALIAS_FLAG)
         p.color = color
         p.textSize = size
-        p.typeface = Typeface.create(font, style)
-        p.textAlign = Paint.Align.CENTER
+        p.typeface = Fonts.typeface(font, face)
+        p.textAlign = when (align) {
+            ALIGN_LEFT -> Paint.Align.LEFT
+            ALIGN_RIGHT -> Paint.Align.RIGHT
+            else -> Paint.Align.CENTER
+        }
+        if (look == LOOK_SHADOW) p.setShadowLayer(size * 0.08f, size * 0.05f, size * 0.05f, 0xC0000000.toInt())
         p
     }
+
+    /** Drawn under the letters when the look is "outline". */
+    val outlinePaint: Paint? by lazy {
+        if (look != LOOK_OUTLINE) {
+            null
+        } else {
+            val p = Paint(paint)
+            p.style = Paint.Style.STROKE
+            p.strokeJoin = Paint.Join.ROUND
+            p.strokeWidth = outlineWidth
+            p.color = color2
+            p
+        }
+    }
+
+    val boxPaint: Paint? by lazy {
+        if (look != LOOK_BOX) {
+            null
+        } else {
+            val p = Paint(Paint.ANTI_ALIAS_FLAG)
+            p.color = color2
+            p
+        }
+    }
+
+    val outlineWidth: Float get() = size * 0.14f
     val lines: List<String> by lazy { text.split("\n") }
     val lineH: Float by lazy { paint.fontSpacing }
-    override val halfW: Float by lazy { max(lines.maxOf { paint.measureText(it) }, size) / 2f }
-    override val halfH: Float by lazy { lines.size * lineH / 2f }
+
+    private val pad: Float
+        get() = when (look) {
+            LOOK_BOX -> size * 0.3f
+            LOOK_OUTLINE -> size * 0.07f
+            else -> 0f
+        }
+    val textHalfW: Float by lazy { max(lines.maxOf { paint.measureText(it) }, size * 0.5f) / 2f }
+    val textHalfH: Float by lazy { lines.size * lineH / 2f }
+    override val halfW: Float by lazy { textHalfW + pad }
+    override val halfH: Float by lazy { textHalfH + pad * 0.5f }
+
+    /** X of the text anchor in local coordinates, matching the alignment. */
+    val anchorX: Float
+        get() = when (align) {
+            ALIGN_LEFT -> -textHalfW
+            ALIGN_RIGHT -> textHalfW
+            else -> 0f
+        }
 
     /** Baseline of line [i] in local coordinates. */
-    fun baseline(i: Int): Float = -halfH + i * lineH - paint.ascent()
+    fun baseline(i: Int): Float = -textHalfH + i * lineH - paint.ascent()
 
     override fun edit(xf: Xf, locked: Boolean, id: Long): El = copy(xf = xf, locked = locked, id = id)
 }

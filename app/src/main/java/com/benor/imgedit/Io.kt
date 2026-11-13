@@ -4,6 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.ImageDecoder
 import android.net.Uri
+import android.provider.OpenableColumns
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.max
 
 object Io {
@@ -40,5 +44,31 @@ object Io {
         } catch (e: Exception) {
             loadSvg(ctx, uri)
         }
+    }
+
+    /** e.g. 2026-11-13_09-50 */
+    fun timeName(): String = SimpleDateFormat("yyyy-MM-dd_HH-mm", Locale.US).format(Date())
+
+    /**
+     * Default project name for a picture: its file name without the extension, or a
+     * time-based name when the file name says nothing (missing, or only digits).
+     */
+    fun projectName(ctx: Context, uri: Uri?): String {
+        val display = if (uri == null) null else try {
+            ctx.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
+                if (c.moveToFirst()) c.getString(0) else null
+            }
+        } catch (e: Exception) {
+            null
+        }
+        val base = display?.substringBeforeLast('.')?.trim() ?: ""
+        return if (base.isEmpty() || base.all { it.isDigit() || it == '_' || it == '-' }) "Image_${timeName()}" else base
+    }
+
+    /** Default file name when exporting. */
+    fun exportName(project: String, ext: String): String {
+        val safe = project.replace(Regex("[\\\\/:*?\"<>|]"), "_")
+        val base = if (safe.isBlank() || safe.startsWith("Image_")) "Image" else safe
+        return "${base}_${timeName()}.$ext"
     }
 }

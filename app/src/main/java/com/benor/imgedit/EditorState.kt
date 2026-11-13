@@ -28,6 +28,16 @@ class EditorState {
     var brushWidth by mutableStateOf(12f)
     var busy by mutableStateOf(false)
 
+    /** Project (in the app's own storage) the open document belongs to. */
+    var projectId by mutableStateOf<String?>(null)
+    var projectName by mutableStateOf("")
+
+    /** The document as it was last written to the project store. */
+    private var savedDoc: Doc? = null
+
+    /** Set when the user taps an already selected text: the screen opens the text editor. */
+    var editRequest by mutableStateOf<Long?>(null)
+
     /** Line being drawn right now, in document coordinates. */
     val stroke = mutableStateListOf<Offset>()
 
@@ -76,7 +86,41 @@ class EditorState {
         afterHistoryJump(before)
     }
 
-    fun setNew(d: Doc) {
+    fun openProject(id: String, name: String, d: Doc, alreadySaved: Boolean) {
+        saveVersion()
+        projectId = id
+        projectName = name
+        setNew(d)
+        savedDoc = if (alreadySaved) d else null
+        saveVersion()
+    }
+
+    /** Store the current state as a new version of the project, if it changed since the last save. */
+    fun saveVersion(): Boolean {
+        val d = doc ?: return false
+        val id = projectId ?: return false
+        if (d === savedDoc) return false
+        savedDoc = d
+        Projects.async { Projects.save(id, d) }
+        return true
+    }
+
+    /** Back to the gallery. */
+    fun close() {
+        saveVersion()
+        doc = null
+        savedDoc = null
+        projectId = null
+        selectedId = null
+        editRequest = null
+        undoStack.clear()
+        redoStack.clear()
+        stroke.clear()
+        crop = null
+        tool = Tool.Select
+    }
+
+    private fun setNew(d: Doc) {
         undoStack.clear()
         redoStack.clear()
         doc = d
@@ -137,11 +181,7 @@ class EditorState {
     }
 
     fun addBitmap(b: Bitmap) {
-        val d = doc
-        if (d == null) {
-            setNew(Io.docFromBitmap(b))
-            return
-        }
+        val d = doc ?: return
         // Start no larger than 60% of the canvas so it is easy to grab.
         val k = min(1f, min(d.w * 0.6f / b.width, d.h * 0.6f / b.height))
         addElement(ImageEl(Ids.next(), Xf(d.w / 2f, d.h / 2f, k, k), b))

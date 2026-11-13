@@ -40,4 +40,21 @@
     <string name="clipboard_empty">Nothing to paste</string>
     <string name="open_image">Open image or project</string>
     <string name="empty_hint">Open a picture to start editing</string>
+    <string name="home">Home</string>
+    <string name="versions">Versions</string>
+    <string name="save_version">Save version now</string>
+    <string name="version_saved">Version saved</string>
+    <string name="my_images">My images</string>
+    <string name="no_projects">Pictures you edit are kept here with their history</string>
+    <string name="delete_project_q">Delete this picture and all its versions?</string>
+    <string name="look_plain">Plain</string>
+    <string name="look_outline">Outline</string>
+    <string name="look_shadow">Shadow</string>
+    <string name="look_box">Box</string>
+    <string name="align_left">Left</string>
+    <string name="align_center">Center</string>
+    <string name="align_right">Right</string>
+    <string name="text_color">Text color</string>
+    <string name="second_color">Outline / box color</string>
+    <string name="new_image">New picture</string>
 </resources>

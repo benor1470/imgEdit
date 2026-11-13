@@ -5,16 +5,13 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,18 +19,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
@@ -47,54 +38,67 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.max
 
-private val PALETTE: List<Int> = listOf(
-    0xFF000000, 0xFFFFFFFF, 0xFFE53935, 0xFFFB8C00, 0xFFFDD835,
-    0xFF43A047, 0xFF00ACC1, 0xFF1E88E5, 0xFF8E24AA, 0xFF6D4C41,
-).map { it.toInt() }
-
-private val FONTS = listOf("sans-serif", "serif", "monospace", "cursive", "sans-serif-condensed", "casual")
-
 private const val FMT_PNG = 0
 private const val FMT_JPG = 1
 private const val FMT_SVG = 2
 
+private class Opened(val id: String, val name: String, val doc: Doc)
+
 @Composable
-fun EditorScreen(initialUri: Uri?) {
+fun EditorScreen(st: EditorState, initialUri: Uri?) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    val st = remember { EditorState() }
     var textDialog by remember { mutableStateOf<TextEl?>(null) }
     var resizeDialog by remember { mutableStateOf(false) }
     var saveMenu by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
+    var projects by remember { mutableStateOf<List<ProjectInfo>>(emptyList()) }
+    var refresh by remember { mutableStateOf(0) }
+    var versionsOf by remember { mutableStateOf<ProjectInfo?>(null) }
+    var confirmDelete by remember { mutableStateOf<ProjectInfo?>(null) }
 
     fun toast(id: Int) {
         Toast.makeText(ctx, id, Toast.LENGTH_SHORT).show()
     }
 
     /** Run slow work off the UI thread, then hand the result back. */
-    fun <T> io(work: () -> T, done: (T) -> Unit) {
+    fun <T> background(dispatcher: CoroutineDispatcher, work: () -> T, done: (T) -> Unit) {
         scope.launch {
             st.busy = true
-            val r = withContext(Dispatchers.IO) { runCatching { work() } }
+            val r = withContext(dispatcher) { runCatching { work() } }
             st.busy = false
             if (r.isSuccess) done(r.getOrThrow()) else toast(R.string.error)
         }
     }
 
+    fun <T> io(work: () -> T, done: (T) -> Unit) = background(Dispatchers.IO, work, done)
+
+    /** Work on the project store; runs in order with the automatic saves. */
+    fun <T> store(work: () -> T, done: (T) -> Unit) = background(Projects.dispatcher, work, done)
+
+    /** A picture (or project file) from outside becomes a new project. */
     fun openUri(uri: Uri) {
-        io({ Io.loadDoc(ctx, uri) }) { st.setNew(it) }
+        io({
+            val d = Io.loadDoc(ctx, uri)
+            val name = Io.projectName(ctx, uri)
+            Opened(Projects.create(name), name, d)
+        }) { st.openProject(it.id, it.name, it.doc, false) }
+    }
+
+    fun openVersion(p: ProjectInfo, v: VersionInfo) {
+        st.saveVersion()
+        store({ Projects.load(p.id, v.file) }) { st.openProject(p.id, p.name, it, true) }
     }
 
     fun addImageUri(uri: Uri) {
@@ -113,7 +117,10 @@ fun EditorScreen(initialUri: Uri?) {
                 }
             }
             true
-        }) { toast(R.string.saved) }
+        }) {
+            st.saveVersion()
+            toast(R.string.saved)
+        }
     }
 
     fun paste() {
@@ -155,58 +162,79 @@ fun EditorScreen(initialUri: Uri?) {
     val doc = st.doc
     val selected = doc?.find(st.selectedId)
 
-    Box(Modifier.fillMaxSize().safeDrawingPadding()) {
-        Column(Modifier.fillMaxSize()) {
-            // ---- top bar: file actions ----
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Btn(R.string.open) { openLauncher.launch(arrayOf("image/*")) }
-                Box {
-                    Btn(R.string.save, enabled = doc != null) { saveMenu = true }
-                    DropdownMenu(expanded = saveMenu, onDismissRequest = { saveMenu = false }) {
-                        DropdownMenuItem(text = { Text(stringResource(R.string.save_png)) }, onClick = {
-                            saveMenu = false
-                            pngLauncher.launch("imgEdit.png")
-                        })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.save_jpg)) }, onClick = {
-                            saveMenu = false
-                            jpgLauncher.launch("imgEdit.jpg")
-                        })
-                        DropdownMenuItem(text = { Text(stringResource(R.string.save_project)) }, onClick = {
-                            saveMenu = false
-                            svgLauncher.launch("imgEdit.svg")
-                        })
-                    }
-                }
-                Btn(R.string.undo, enabled = st.undoStack.isNotEmpty()) { st.undo() }
-                Btn(R.string.redo, enabled = st.redoStack.isNotEmpty()) { st.redo() }
-                Btn(R.string.fit, enabled = doc != null) { st.fit() }
-            }
+    // Gallery content, reloaded whenever we are back on the home screen.
+    LaunchedEffect(doc == null, refresh) {
+        if (doc == null) {
+            projects = withContext(Projects.dispatcher) { runCatching { Projects.list() }.getOrDefault(emptyList()) }
+        }
+    }
 
-            // ---- canvas ----
-            Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF2B2B2B))) {
-                if (doc == null) {
-                    Column(
-                        Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.Center,
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(stringResource(R.string.empty_hint), color = Color.White)
-                        Spacer(Modifier.height(16.dp))
-                        Button(onClick = { openLauncher.launch(arrayOf("image/*")) }) {
-                            Text(stringResource(R.string.open_image))
+    // Tap on a selected text opens the text editor.
+    val editId = st.editRequest
+    LaunchedEffect(editId) {
+        if (editId != null) {
+            val e = st.doc?.find(editId)
+            if (e is TextEl) textDialog = e
+            st.editRequest = null
+        }
+    }
+
+    BackHandler(enabled = doc != null) { st.close() }
+
+    Box(Modifier.fillMaxSize().safeDrawingPadding()) {
+        if (doc == null) {
+            Gallery(
+                projects = projects,
+                onNew = { openLauncher.launch(arrayOf("image/*")) },
+                onPaste = { paste() },
+                onOpen = { p -> openVersion(p, p.versions.first()) },
+                onVersions = { p -> versionsOf = p },
+                onDelete = { p -> confirmDelete = p },
+            )
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                // ---- top bar: file actions ----
+                BarRow {
+                    Btn(R.string.home) { st.close() }
+                    Box {
+                        Btn(R.string.save) { saveMenu = true }
+                        DropdownMenu(expanded = saveMenu, onDismissRequest = { saveMenu = false }) {
+                            DropdownMenuItem(text = { Text(stringResource(R.string.save_png)) }, onClick = {
+                                saveMenu = false
+                                pngLauncher.launch(Io.exportName(st.projectName, "png"))
+                            })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.save_jpg)) }, onClick = {
+                                saveMenu = false
+                                jpgLauncher.launch(Io.exportName(st.projectName, "jpg"))
+                            })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.save_project)) }, onClick = {
+                                saveMenu = false
+                                svgLauncher.launch(Io.exportName(st.projectName, "svg"))
+                            })
+                            DropdownMenuItem(text = { Text(stringResource(R.string.save_version)) }, onClick = {
+                                saveMenu = false
+                                st.saveVersion()
+                                toast(R.string.version_saved)
+                            })
                         }
-                        Spacer(Modifier.height(8.dp))
-                        TextButton(onClick = { paste() }) { Text(stringResource(R.string.paste)) }
                     }
-                } else {
+                    Btn(R.string.undo, enabled = st.undoStack.isNotEmpty()) { st.undo() }
+                    Btn(R.string.redo, enabled = st.redoStack.isNotEmpty()) { st.redo() }
+                    Btn(R.string.versions) {
+                        val id = st.projectId
+                        if (id != null) {
+                            st.saveVersion()
+                            store({ Projects.info(id) }) { versionsOf = it }
+                        }
+                    }
+                    Btn(R.string.fit) { st.fit() }
+                }
+
+                // ---- canvas ----
+                Box(Modifier.weight(1f).fillMaxWidth().background(Color(0xFF2B2B2B))) {
                     EditorCanvas(st, Modifier.fillMaxSize())
                 }
-            }
 
-            if (doc != null) {
                 // ---- context bar: depends on the tool / selection ----
                 when {
                     st.tool == Tool.Draw -> Column(Modifier.fillMaxWidth()) {
@@ -224,7 +252,7 @@ fun EditorScreen(initialUri: Uri?) {
                         Btn(R.string.cancel) { st.pickTool(Tool.Select) }
                     }
                     selected != null -> BarRow {
-                        if (selected is TextEl) Btn(R.string.edit) { textDialog = selected }
+                        if (selected is TextEl) Btn(R.string.edit, selected = true) { textDialog = selected }
                         Btn(R.string.delete) { st.deleteSelected() }
                         Btn(R.string.duplicate) { st.duplicateSelected() }
                         Btn(R.string.forward) { st.reorder(1) }
@@ -236,11 +264,11 @@ fun EditorScreen(initialUri: Uri?) {
                 // ---- tools ----
                 BarRow {
                     Btn(R.string.select, selected = st.tool == Tool.Select) { st.pickTool(Tool.Select) }
+                    Btn(R.string.add_text) { textDialog = st.newText() }
                     Btn(R.string.draw, selected = st.tool == Tool.Draw) { st.pickTool(Tool.Draw) }
                     Btn(R.string.crop, selected = st.tool == Tool.Crop) { st.pickTool(Tool.Crop) }
                     Btn(R.string.rotate) { st.rotateAll(true) }
                     Btn(R.string.add_image) { addLauncher.launch("image/*") }
-                    Btn(R.string.add_text) { textDialog = st.newText() }
                     Btn(R.string.paste) { paste() }
                     Box {
                         Btn(R.string.more) { moreMenu = true }
@@ -299,99 +327,45 @@ fun EditorScreen(initialUri: Uri?) {
             onCancel = { resizeDialog = false },
         )
     }
-}
 
-@Composable
-private fun BarRow(content: @Composable () -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        content()
-    }
-}
-
-@Composable
-private fun Btn(label: Int, selected: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
-    val pad = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-    if (selected) {
-        FilledTonalButton(onClick = onClick, enabled = enabled, contentPadding = pad) {
-            Text(stringResource(label), maxLines = 1)
-        }
-    } else {
-        TextButton(onClick = onClick, enabled = enabled, contentPadding = pad) {
-            Text(stringResource(label), maxLines = 1)
-        }
-    }
-}
-
-@Composable
-private fun ColorRow(selected: Int, onPick: (Int) -> Unit) {
-    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp)) {
-        for (c in PALETTE) {
-            val on = c == selected
-            Box(
-                Modifier
-                    .padding(4.dp)
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(Color(c))
-                    .border(
-                        if (on) 3.dp else 1.dp,
-                        if (on) MaterialTheme.colorScheme.primary else Color.Gray,
-                        CircleShape,
-                    )
-                    .clickable { onPick(c) }
-            )
-        }
-    }
-}
-
-@Composable
-private fun TextDialog(initial: TextEl, onDone: (TextEl) -> Unit, onCancel: () -> Unit) {
-    var text by remember { mutableStateOf(initial.text) }
-    var color by remember { mutableStateOf(initial.color) }
-    var font by remember { mutableStateOf(initial.font) }
-    var bold by remember { mutableStateOf(initial.bold) }
-    var italic by remember { mutableStateOf(initial.italic) }
-
-    AlertDialog(
-        onDismissRequest = onCancel,
-        confirmButton = {
-            TextButton(
-                enabled = text.isNotBlank(),
-                onClick = { onDone(initial.copy(text = text, color = color, font = font, bold = bold, italic = italic)) },
-            ) { Text(stringResource(R.string.ok)) }
-        },
-        dismissButton = { TextButton(onClick = onCancel) { Text(stringResource(R.string.cancel)) } },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text(stringResource(R.string.text_hint)) },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Spacer(Modifier.height(8.dp))
-                ColorRow(color) { color = it }
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    for (name in FONTS) {
-                        if (name == font) {
-                            FilledTonalButton(onClick = { font = name }) { Text(name) }
-                        } else {
-                            TextButton(onClick = { font = name }) { Text(name) }
-                        }
-                    }
+    val showVersions = versionsOf
+    if (showVersions != null) {
+        VersionsDialog(
+            project = showVersions,
+            onOpen = { v ->
+                versionsOf = null
+                openVersion(showVersions, v)
+            },
+            onDelete = { v ->
+                store({
+                    Projects.deleteVersion(showVersions.id, v)
+                    Projects.info(showVersions.id)
+                }) {
+                    versionsOf = it
+                    refresh++
                 }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = bold, onCheckedChange = { bold = it })
-                    Text(stringResource(R.string.bold))
-                    Checkbox(checked = italic, onCheckedChange = { italic = it })
-                    Text(stringResource(R.string.italic))
-                }
-            }
-        },
-    )
+            },
+            onClose = { versionsOf = null },
+        )
+    }
+
+    val deleting = confirmDelete
+    if (deleting != null) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDelete = null
+                    store({ Projects.delete(deleting.id) }) { refresh++ }
+                }) { Text(stringResource(R.string.delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.cancel)) }
+            },
+            title = { Text(deleting.name) },
+            text = { Text(stringResource(R.string.delete_project_q)) },
+        )
+    }
 }
 
 @Composable
@@ -431,4 +405,14 @@ private fun ResizeDialog(w: Int, h: Int, onDone: (Int, Int) -> Unit, onCancel: (
             }
         },
     )
+}
+
+@Composable
+fun BarRow(content: @Composable () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        content()
+    }
 }

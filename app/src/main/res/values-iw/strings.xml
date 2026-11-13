@@ -39,4 +39,21 @@
     <string name="clipboard_empty">אין מה להדביק</string>
     <string name="open_image">פתח תמונה או פרויקט</string>
     <string name="empty_hint">פתח תמונה כדי להתחיל לערוך</string>
+    <string name="home">בית</string>
+    <string name="versions">גרסאות</string>
+    <string name="save_version">שמור גרסה עכשיו</string>
+    <string name="version_saved">הגרסה נשמרה</string>
+    <string name="my_images">התמונות שלי</string>
+    <string name="no_projects">תמונות שתערוך יישמרו כאן יחד עם ההיסטוריה שלהן</string>
+    <string name="delete_project_q">למחוק את התמונה ואת כל הגרסאות שלה?</string>
+    <string name="look_plain">רגיל</string>
+    <string name="look_outline">קו מתאר</string>
+    <string name="look_shadow">צל</string>
+    <string name="look_box">רקע</string>
+    <string name="align_left">שמאל</string>
+    <string name="align_center">מרכז</string>
+    <string name="align_right">ימין</string>
+    <string name="text_color">צבע הטקסט</string>
+    <string name="second_color">צבע קו מתאר / רקע</string>
+    <string name="new_image">תמונה חדשה</string>
 </resources>

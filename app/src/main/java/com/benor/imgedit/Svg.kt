@@ -35,7 +35,11 @@ object Svg {
         return if (e.locked) "$t ie:locked=\"1\"" else t
     }
 
-    fun write(doc: Doc, out: OutputStream) {
+    /**
+     * [linkFor] null embeds every picture inside the file (portable). Otherwise it returns
+     * the link to write for a picture, which is how the in-app project store keeps files small.
+     */
+    fun write(doc: Doc, out: OutputStream, linkFor: ((ImageEl) -> String)? = null) {
         val w = out.bufferedWriter(Charsets.UTF_8)
         w.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
         w.write(
@@ -45,29 +49,45 @@ object Svg {
         for (e in doc.els) {
             when (e) {
                 is ImageEl -> {
-                    val alpha = e.bitmap.hasAlpha()
-                    val bytes = ByteArrayOutputStream()
-                    if (alpha) e.bitmap.compress(Bitmap.CompressFormat.PNG, 100, bytes)
-                    else e.bitmap.compress(Bitmap.CompressFormat.JPEG, 95, bytes)
-                    val mime = if (alpha) "image/png" else "image/jpeg"
                     w.write(
                         "<image ie:type=\"image\" ${common(e)} x=\"${f(-e.halfW)}\" y=\"${f(-e.halfH)}\" " +
                             "width=\"${e.bitmap.width}\" height=\"${e.bitmap.height}\" preserveAspectRatio=\"none\" " +
-                            "xlink:href=\"data:$mime;base64,"
+                            "xlink:href=\""
                     )
-                    w.write(Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP))
+                    if (linkFor != null) {
+                        w.write(esc(linkFor(e)))
+                    } else {
+                        val alpha = e.bitmap.hasAlpha()
+                        val bytes = ByteArrayOutputStream()
+                        if (alpha) e.bitmap.compress(Bitmap.CompressFormat.PNG, 100, bytes)
+                        else e.bitmap.compress(Bitmap.CompressFormat.JPEG, 95, bytes)
+                        w.write(if (alpha) "data:image/png;base64," else "data:image/jpeg;base64,")
+                        w.write(Base64.encodeToString(bytes.toByteArray(), Base64.NO_WRAP))
+                    }
                     w.write("\"/>\n")
                 }
                 is TextEl -> {
+                    val anchor = when (e.align) {
+                        ALIGN_LEFT -> "start"
+                        ALIGN_RIGHT -> "end"
+                        else -> "middle"
+                    }
                     w.write(
                         "<text ie:type=\"text\" ${common(e)} font-family=\"${esc(e.font)}\" font-size=\"${f(e.size)}\" " +
-                            "fill=\"${hex(e.color)}\" text-anchor=\"middle\" xml:space=\"preserve\""
+                            "fill=\"${hex(e.color)}\" text-anchor=\"$anchor\" xml:space=\"preserve\" " +
+                            "ie:look=\"${e.look}\" ie:color2=\"${hex(e.color2)}\" ie:align=\"${e.align}\""
                     )
                     if (e.bold) w.write(" font-weight=\"bold\"")
                     if (e.italic) w.write(" font-style=\"italic\"")
+                    if (e.look == LOOK_OUTLINE) {
+                        w.write(
+                            " stroke=\"${hex(e.color2)}\" stroke-width=\"${f(e.outlineWidth)}\" " +
+                                "stroke-linejoin=\"round\" paint-order=\"stroke\""
+                        )
+                    }
                     w.write(">")
                     e.lines.forEachIndexed { i, line ->
-                        w.write("<tspan x=\"0\" y=\"${f(e.baseline(i))}\">${esc(line)}</tspan>")
+                        w.write("<tspan x=\"${f(e.anchorX)}\" y=\"${f(e.baseline(i))}\">${esc(line)}</tspan>")
                     }
                     w.write("</text>\n")
                 }
@@ -135,7 +155,8 @@ object Svg {
         Color.BLACK
     }
 
-    fun read(input: InputStream): Doc {
+    /** [resolve] loads a linked (not embedded) picture from its href. */
+    fun read(input: InputStream, resolve: ((String) -> Bitmap?)? = null): Doc {
         val p = Xml.newPullParser()
         p.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
         p.setInput(input, null)
@@ -166,10 +187,14 @@ object Svg {
                         }
                         "image" -> {
                             val href = p.getAttributeValue(null, "xlink:href") ?: p.getAttributeValue(null, "href")
-                            val comma = href?.indexOf(',') ?: -1
-                            if (href != null && href.startsWith("data:") && comma > 0) {
-                                val bytes = Base64.decode(href.substring(comma + 1), Base64.DEFAULT)
-                                val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            if (href != null) {
+                                val comma = href.indexOf(',')
+                                val bmp = if (href.startsWith("data:") && comma > 0) {
+                                    val bytes = Base64.decode(href.substring(comma + 1), Base64.DEFAULT)
+                                    BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                } else {
+                                    resolve?.invoke(href)
+                                }
                                 if (bmp != null) {
                                     val xf = if (ours) {
                                         parseTransform(p.getAttributeValue(null, "transform"))
@@ -212,6 +237,9 @@ object Svg {
                                 p.getAttributeValue(null, "font-weight") == "bold",
                                 p.getAttributeValue(null, "font-style") == "italic",
                                 locked,
+                                num(p.getAttributeValue(null, "ie:look")).toInt(),
+                                parseColor(p.getAttributeValue(null, "ie:color2")),
+                                num(p.getAttributeValue(null, "ie:align")).toInt(),
                             )
                         }
                         "tspan" -> if (pendingText != null) sb = StringBuilder()

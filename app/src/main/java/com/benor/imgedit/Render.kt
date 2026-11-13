@@ -35,10 +35,32 @@ object Render {
         c.scale(e.xf.sx, e.xf.sy)
         when (e) {
             is ImageEl -> c.drawBitmap(e.bitmap, -e.halfW, -e.halfH, bitmapPaint)
-            is TextEl -> e.lines.forEachIndexed { i, line -> c.drawText(line, 0f, e.baseline(i), e.paint) }
+            is TextEl -> {
+                val box = e.boxPaint
+                if (box != null) {
+                    val r = e.size * 0.2f
+                    c.drawRoundRect(-e.halfW, -e.halfH, e.halfW, e.halfH, r, r, box)
+                }
+                val outline = e.outlinePaint
+                e.lines.forEachIndexed { i, line ->
+                    if (outline != null) c.drawText(line, e.anchorX, e.baseline(i), outline)
+                    c.drawText(line, e.anchorX, e.baseline(i), e.paint)
+                }
+            }
             is StrokeEl -> c.drawPath(e.path, e.paint)
         }
         c.restore()
+    }
+
+    /** Small preview of the document on a white background. */
+    fun thumb(doc: Doc, maxDim: Int): Bitmap {
+        val k = minOf(1f, maxDim.toFloat() / max(doc.w, doc.h))
+        val b = Bitmap.createBitmap(max(1, (doc.w * k).toInt()), max(1, (doc.h * k).toInt()), Bitmap.Config.ARGB_8888)
+        val c = Canvas(b)
+        c.drawColor(0xFFFFFFFF.toInt())
+        c.scale(k, k)
+        for (e in doc.els) drawEl(c, e)
+        return b
     }
 
     /** Flatten the document to one bitmap. [background] null keeps transparency. */
