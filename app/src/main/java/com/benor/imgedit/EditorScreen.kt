@@ -21,6 +21,35 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Backspace
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.AspectRatio
+import androidx.compose.material.icons.filled.Brush
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Crop
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.FitScreen
+import androidx.compose.material.icons.filled.FlipToBack
+import androidx.compose.material.icons.filled.FlipToFront
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.RotateLeft
+import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
@@ -195,39 +224,39 @@ fun EditorScreen(st: EditorState, initialUri: Uri?) {
             Column(Modifier.fillMaxSize()) {
                 // ---- top bar: file actions ----
                 BarRow {
-                    Btn(R.string.home) { st.close() }
+                    Btn(R.string.home, Icons.Filled.Home) { st.close() }
                     Box {
-                        Btn(R.string.save) { saveMenu = true }
+                        Btn(R.string.save, Icons.Filled.Save) { saveMenu = true }
                         DropdownMenu(expanded = saveMenu, onDismissRequest = { saveMenu = false }) {
-                            DropdownMenuItem(text = { Text(stringResource(R.string.save_png)) }, onClick = {
+                            MenuItem(R.string.save_png, Icons.Filled.Image, onClick = {
                                 saveMenu = false
                                 pngLauncher.launch(Io.exportName(st.projectName, "png"))
                             })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.save_jpg)) }, onClick = {
+                            MenuItem(R.string.save_jpg, Icons.Filled.Image, onClick = {
                                 saveMenu = false
                                 jpgLauncher.launch(Io.exportName(st.projectName, "jpg"))
                             })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.save_project)) }, onClick = {
+                            MenuItem(R.string.save_project, Icons.Filled.Layers, onClick = {
                                 saveMenu = false
                                 svgLauncher.launch(Io.exportName(st.projectName, "svg"))
                             })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.save_version)) }, onClick = {
+                            MenuItem(R.string.save_version, Icons.Filled.History, onClick = {
                                 saveMenu = false
                                 st.saveVersion()
                                 toast(R.string.version_saved)
                             })
                         }
                     }
-                    Btn(R.string.undo, enabled = st.undoStack.isNotEmpty()) { st.undo() }
-                    Btn(R.string.redo, enabled = st.redoStack.isNotEmpty()) { st.redo() }
-                    Btn(R.string.versions) {
+                    Btn(R.string.undo, Icons.AutoMirrored.Filled.Undo, enabled = st.undoStack.isNotEmpty()) { st.undo() }
+                    Btn(R.string.redo, Icons.AutoMirrored.Filled.Redo, enabled = st.redoStack.isNotEmpty()) { st.redo() }
+                    Btn(R.string.versions, Icons.Filled.History) {
                         val id = st.projectId
                         if (id != null) {
                             st.saveVersion()
                             store({ Projects.info(id) }) { versionsOf = it }
                         }
                     }
-                    Btn(R.string.fit) { st.fit() }
+                    Btn(R.string.fit, Icons.Filled.FitScreen) { st.fit() }
                 }
 
                 // ---- canvas ----
@@ -248,40 +277,61 @@ fun EditorScreen(st: EditorState, initialUri: Uri?) {
                         )
                     }
                     st.tool == Tool.Crop -> BarRow {
-                        Btn(R.string.apply, selected = true) { st.applyCrop() }
-                        Btn(R.string.cancel) { st.pickTool(Tool.Select) }
+                        Btn(R.string.apply, Icons.Filled.Check, selected = true) { st.applyCrop() }
+                        Btn(R.string.cancel, Icons.Filled.Close) { st.pickTool(Tool.Select) }
+                    }
+                    st.tool == Tool.ElCrop -> BarRow {
+                        Btn(R.string.apply, Icons.Filled.Check, selected = true) { st.applyElCrop() }
+                        Btn(R.string.cancel, Icons.Filled.Close) { st.endElTool() }
+                    }
+                    st.tool == Tool.Erase -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Btn(R.string.done, Icons.Filled.Check, selected = true) { st.endElTool() }
+                        val maxW = max(40f, max(doc.w, doc.h) / 6f)
+                        Slider(
+                            value = st.brushWidth.coerceIn(1f, maxW),
+                            onValueChange = { st.brushWidth = it },
+                            valueRange = 1f..maxW,
+                            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
+                        )
                     }
                     selected != null -> BarRow {
-                        if (selected is TextEl) Btn(R.string.edit, selected = true) { textDialog = selected }
-                        Btn(R.string.delete) { st.deleteSelected() }
-                        Btn(R.string.duplicate) { st.duplicateSelected() }
-                        Btn(R.string.forward) { st.reorder(1) }
-                        Btn(R.string.backward) { st.reorder(-1) }
-                        Btn(if (selected.locked) R.string.unlock else R.string.lock) { st.toggleLock() }
+                        if (selected is TextEl) Btn(R.string.edit, Icons.Filled.Edit, selected = true) { textDialog = selected }
+                        if (selected is ImageEl) {
+                            Btn(R.string.erase, Icons.AutoMirrored.Filled.Backspace) { st.startErase() }
+                            Btn(R.string.crop_this, Icons.Filled.Crop) { st.startElCrop() }
+                        }
+                        Btn(R.string.delete, Icons.Filled.Delete) { st.deleteSelected() }
+                        Btn(R.string.duplicate, Icons.Filled.ContentCopy) { st.duplicateSelected() }
+                        Btn(R.string.forward, Icons.Filled.FlipToFront) { st.reorder(1) }
+                        Btn(R.string.backward, Icons.Filled.FlipToBack) { st.reorder(-1) }
+                        Btn(
+                            if (selected.locked) R.string.unlock else R.string.lock,
+                            if (selected.locked) Icons.Filled.LockOpen else Icons.Filled.Lock,
+                        ) { st.toggleLock() }
                     }
                 }
 
                 // ---- tools ----
                 BarRow {
-                    Btn(R.string.select, selected = st.tool == Tool.Select) { st.pickTool(Tool.Select) }
-                    Btn(R.string.add_text) { textDialog = st.newText() }
-                    Btn(R.string.draw, selected = st.tool == Tool.Draw) { st.pickTool(Tool.Draw) }
-                    Btn(R.string.crop, selected = st.tool == Tool.Crop) { st.pickTool(Tool.Crop) }
-                    Btn(R.string.rotate) { st.rotateAll(true) }
-                    Btn(R.string.add_image) { addLauncher.launch("image/*") }
-                    Btn(R.string.paste) { paste() }
+                    Btn(R.string.select, Icons.Filled.TouchApp, selected = st.tool == Tool.Select) { st.pickTool(Tool.Select) }
+                    Btn(R.string.add_text, Icons.Filled.TextFields) { textDialog = st.newText() }
+                    Btn(R.string.draw, Icons.Filled.Brush, selected = st.tool == Tool.Draw) { st.pickTool(Tool.Draw) }
+                    Btn(R.string.crop, Icons.Filled.Crop, selected = st.tool == Tool.Crop) { st.pickTool(Tool.Crop) }
+                    Btn(R.string.rotate, Icons.Filled.RotateRight) { st.rotateAll(true) }
+                    Btn(R.string.add_image, Icons.Filled.AddPhotoAlternate) { addLauncher.launch("image/*") }
+                    Btn(R.string.paste, Icons.Filled.ContentPaste) { paste() }
                     Box {
-                        Btn(R.string.more) { moreMenu = true }
+                        Btn(R.string.more, Icons.Filled.MoreVert) { moreMenu = true }
                         DropdownMenu(expanded = moreMenu, onDismissRequest = { moreMenu = false }) {
-                            DropdownMenuItem(text = { Text(stringResource(R.string.rotate_left)) }, onClick = {
+                            MenuItem(R.string.rotate_left, Icons.Filled.RotateLeft, onClick = {
                                 moreMenu = false
                                 st.rotateAll(false)
                             })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.resize)) }, onClick = {
+                            MenuItem(R.string.resize, Icons.Filled.AspectRatio, onClick = {
                                 moreMenu = false
                                 resizeDialog = true
                             })
-                            DropdownMenuItem(text = { Text(stringResource(R.string.merge_all)) }, onClick = {
+                            MenuItem(R.string.merge_all, Icons.Filled.Layers, onClick = {
                                 moreMenu = false
                                 val d = st.doc
                                 if (d != null) {

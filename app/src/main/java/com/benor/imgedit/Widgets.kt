@@ -3,6 +3,11 @@ package com.benor.imgedit
 import android.graphics.BitmapFactory
 import android.graphics.Typeface
 import androidx.compose.foundation.Canvas
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.History
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -30,7 +36,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -43,10 +51,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
@@ -70,9 +80,43 @@ val PALETTE: List<Int> = listOf(
 private fun formatTime(t: Long): String =
     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT).format(Date(t))
 
+/** Toolbar button: icon with a small label under it. */
 @Composable
-fun Btn(label: Int, selected: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
-    Choice(stringResource(label), selected, enabled, onClick = onClick)
+fun Btn(label: Int, icon: ImageVector, selected: Boolean = false, enabled: Boolean = true, onClick: () -> Unit) {
+    val text = stringResource(label)
+    Column(
+        Modifier
+            .padding(horizontal = 2.dp, vertical = 2.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+            .clickable(enabled = enabled, onClick = onClick)
+            .alpha(if (enabled) 1f else 0.38f)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(icon, contentDescription = text, modifier = Modifier.size(22.dp))
+        Text(text, maxLines = 1, style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+/** Menu row with an icon. */
+@Composable
+fun MenuItem(label: Int, icon: ImageVector, onClick: () -> Unit) {
+    DropdownMenuItem(
+        text = { Text(stringResource(label)) },
+        leadingIcon = { Icon(icon, contentDescription = null) },
+        onClick = onClick,
+    )
+}
+
+/** Small text button with an icon in front. */
+@Composable
+fun IconTextButton(text: String, icon: ImageVector, onClick: () -> Unit) {
+    TextButton(onClick = onClick, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(text, maxLines = 1)
+    }
 }
 
 /** Button that looks filled when it is the chosen option. */
@@ -154,7 +198,7 @@ fun TextDialog(initial: TextEl, onDone: (TextEl) -> Unit, onCancel: () -> Unit) 
                 Spacer(Modifier.height(8.dp))
 
                 // Live preview, drawn by the same code that draws the canvas.
-                val preview = build(initial.copy(xf = Xf(0f, 0f), size = 100f), text.ifBlank { "Abc אבג" })
+                val preview = build(initial.copy(xf = Xf(0f, 0f), size = 100f), text.ifBlank { "Abc" })
                 Canvas(
                     Modifier.fillMaxWidth().height(110.dp).clip(RoundedCornerShape(8.dp)).background(Color(0xFF8A8A8A))
                 ) {
@@ -201,10 +245,13 @@ fun TextDialog(initial: TextEl, onDone: (TextEl) -> Unit, onCancel: () -> Unit) 
                     Text(stringResource(R.string.italic))
                 }
 
-                Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
-                    Choice(stringResource(R.string.align_left), align == ALIGN_LEFT) { align = ALIGN_LEFT }
-                    Choice(stringResource(R.string.align_center), align == ALIGN_CENTER) { align = ALIGN_CENTER }
-                    Choice(stringResource(R.string.align_right), align == ALIGN_RIGHT) { align = ALIGN_RIGHT }
+                // Alignment only changes anything when there is more than one line.
+                if (text.trim().contains('\n')) {
+                    Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+                        Choice(stringResource(R.string.align_left), align == ALIGN_LEFT) { align = ALIGN_LEFT }
+                        Choice(stringResource(R.string.align_center), align == ALIGN_CENTER) { align = ALIGN_CENTER }
+                        Choice(stringResource(R.string.align_right), align == ALIGN_RIGHT) { align = ALIGN_RIGHT }
+                    }
                 }
             }
         },
@@ -244,8 +291,12 @@ fun Gallery(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onPaste) { Text(stringResource(R.string.paste)) }
-            Button(onClick = onNew) { Text(stringResource(R.string.new_image)) }
+            IconTextButton(stringResource(R.string.paste), Icons.Filled.ContentPaste, onPaste)
+            Button(onClick = onNew) {
+                Icon(Icons.Filled.Add, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(4.dp))
+                Text(stringResource(R.string.new_image))
+            }
         }
         if (projects.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -281,12 +332,9 @@ fun Gallery(
                             modifier = Modifier.padding(horizontal = 8.dp),
                         )
                         Row {
-                            TextButton(onClick = { onVersions(p) }) {
-                                Text("${stringResource(R.string.versions)} (${p.versions.size})", maxLines = 1)
-                            }
-                            TextButton(onClick = { onDelete(p) }) {
-                                Text(stringResource(R.string.delete), maxLines = 1)
-                            }
+                            IconTextButton("${p.versions.size}", Icons.Filled.History) { onVersions(p) }
+                            Spacer(Modifier.weight(1f))
+                            IconTextButton("", Icons.Filled.Delete) { onDelete(p) }
                         }
                     }
                 }
@@ -320,7 +368,7 @@ fun VersionsDialog(
                             formatTime(v.time),
                             modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                         )
-                        TextButton(onClick = { onDelete(v) }) { Text(stringResource(R.string.delete)) }
+                        IconTextButton("", Icons.Filled.Delete) { onDelete(v) }
                     }
                 }
             }

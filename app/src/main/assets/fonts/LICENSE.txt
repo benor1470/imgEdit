@@ -1,4 +1,5 @@
 The fonts in this folder come from the Google Fonts collection
 (https://github.com/google/fonts, "ofl" directory) and are licensed under the
-SIL Open Font License 1.1 (https://openfontlicense.org). Each font is
+SIL Open Font License 1.1 (https://openfontlicense.org), except
+Permanent Marker, which is under the Apache License 2.0. Each font is
 copyright of its respective project authors.

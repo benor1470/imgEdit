@@ -1,6 +1,11 @@
 package com.benor.imgedit
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -12,9 +17,14 @@ import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
-enum class Tool { Select, Draw, Crop }
+/** Crop = whole canvas. ElCrop / Erase work on the selected picture only. */
+enum class Tool { Select, Draw, Crop, ElCrop, Erase }
+
+/** A picture being erased: drawing on [canvas] with [paint] makes pixels transparent. */
+class Eraser(val canvas: Canvas, val paint: Paint)
 
 /** Drag handles shown around the selected element. */
 enum class Handle { Right, Bottom, Corner, Rotate }
@@ -24,6 +34,12 @@ class EditorState {
     var selectedId by mutableStateOf<Long?>(null)
     var tool by mutableStateOf(Tool.Select)
     var crop by mutableStateOf<Rect?>(null)
+
+    /** Crop frame of the selected picture, in that picture's own pixels. */
+    var elCrop by mutableStateOf<Rect?>(null)
+
+    /** Bumped whenever a bitmap is changed in place, so the canvas redraws. */
+    var tick by mutableStateOf(0)
     var brushColor by mutableStateOf(0xFFE53935.toInt())
     var brushWidth by mutableStateOf(12f)
     var busy by mutableStateOf(false)
@@ -54,7 +70,7 @@ class EditorState {
     fun snapshot() {
         val d = doc ?: return
         undoStack.add(d)
-        if (undoStack.size > 40) undoStack.removeAt(0)
+        if (undoStack.size > 25) undoStack.removeAt(0)
         redoStack.clear()
     }
 
@@ -66,7 +82,9 @@ class EditorState {
     private fun afterHistoryJump(before: Doc?) {
         val d = doc
         if (d?.find(selectedId) == null) selectedId = null
-        if (tool == Tool.Crop) pickTool(Tool.Select)
+        val eraseGone = tool == Tool.Erase && d?.find(selectedId) !is ImageEl
+        if (tool == Tool.Crop || eraseGone) pickTool(Tool.Select)
+        if (tool == Tool.ElCrop) endElTool()
         if (before != null && d != null && (before.w != d.w || before.h != d.h)) fit()
     }
 
@@ -117,6 +135,7 @@ class EditorState {
         redoStack.clear()
         stroke.clear()
         crop = null
+        elCrop = null
         tool = Tool.Select
     }
 
@@ -127,6 +146,7 @@ class EditorState {
         selectedId = null
         stroke.clear()
         crop = null
+        elCrop = null
         tool = Tool.Select
         brushWidth = max(4f, max(d.w, d.h) / 150f)
         fit()
@@ -136,8 +156,103 @@ class EditorState {
         stroke.clear()
         val d = doc
         crop = if (t == Tool.Crop && d != null) Rect(0f, 0f, d.w.toFloat(), d.h.toFloat()) else null
+        elCrop = null
         if (t != Tool.Select) selectedId = null
         tool = t
+    }
+
+    /** Position of a pixel of picture [e] on screen. */
+    fun bitmapToScreen(e: El, bx: Float, by: Float): Offset {
+        val p = floatArrayOf(bx - e.halfW, by - e.halfH)
+        e.xf.matrix().mapPoints(p)
+        return toScreen(p[0], p[1])
+    }
+
+    /** Pixel of picture [e] under a document point. */
+    fun docToBitmap(e: El, p: Offset): Offset {
+        val inv = Matrix()
+        e.xf.matrix().invert(inv)
+        val a = floatArrayOf(p.x, p.y)
+        inv.mapPoints(a)
+        return Offset(a[0] + e.halfW, a[1] + e.halfH)
+    }
+
+    // ---- editing one picture ----
+
+    fun startElCrop() {
+        val e = doc?.find(selectedId) as? ImageEl ?: return
+        stroke.clear()
+        crop = null
+        elCrop = Rect(0f, 0f, e.bitmap.width.toFloat(), e.bitmap.height.toFloat())
+        tool = Tool.ElCrop
+    }
+
+    fun applyElCrop() {
+        val d = doc
+        val e = d?.find(selectedId) as? ImageEl
+        val r = elCrop
+        if (d != null && e != null && r != null) {
+            val bw = e.bitmap.width
+            val bh = e.bitmap.height
+            val l = r.left.roundToInt().coerceIn(0, bw - 1)
+            val t = r.top.roundToInt().coerceIn(0, bh - 1)
+            val w = (r.right.roundToInt() - l).coerceIn(1, bw - l)
+            val h = (r.bottom.roundToInt() - t).coerceIn(1, bh - t)
+            if (w != bw || h != bh) {
+                val nb = Bitmap.createBitmap(e.bitmap, l, t, w, h)
+                // Keep the remaining part exactly where it was on the canvas.
+                val c = floatArrayOf(l + w / 2f - e.halfW, t + h / 2f - e.halfH)
+                e.xf.matrix().mapPoints(c)
+                commit(d.replace(e.copy(bitmap = nb, xf = e.xf.copy(cx = c[0], cy = c[1]))))
+            }
+        }
+        endElTool()
+    }
+
+    fun startErase() {
+        if (doc?.find(selectedId) !is ImageEl) return
+        stroke.clear()
+        crop = null
+        elCrop = null
+        tool = Tool.Erase
+    }
+
+    /** Leave the picture tools, keeping the picture selected. */
+    fun endElTool() {
+        elCrop = null
+        tool = Tool.Select
+    }
+
+    /**
+     * Start one eraser stroke on the selected picture. The picture's bitmap is copied
+     * first, so the stroke can be undone and older versions keep their pixels.
+     */
+    fun beginErase(): Eraser? {
+        val d = doc ?: return null
+        val e = d.find(selectedId) as? ImageEl ?: return null
+        val work = try {
+            e.bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        } catch (t: Throwable) {
+            null
+        } ?: return null
+        work.setHasAlpha(true)
+        snapshot()
+        doc = d.replace(e.copy(bitmap = work))
+        val scale = (abs(e.xf.sx) + abs(e.xf.sy)) / 2f
+        val p = Paint(Paint.ANTI_ALIAS_FLAG)
+        p.style = Paint.Style.STROKE
+        p.strokeCap = Paint.Cap.ROUND
+        p.strokeJoin = Paint.Join.ROUND
+        p.strokeWidth = brushWidth / max(scale, 0.0001f)
+        p.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        return Eraser(Canvas(work), p)
+    }
+
+    /** Erase along a line given in the picture's own pixels. */
+    fun eraseLine(er: Eraser, a: Offset, b: Offset) {
+        val bx = if (a == b) b.x + 0.01f else b.x
+        er.canvas.drawLine(a.x, a.y, bx, b.y, er.paint)
+        tick++
     }
 
     fun fit() {

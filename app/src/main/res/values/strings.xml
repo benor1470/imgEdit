@@ -10,8 +10,8 @@
     <string name="draw">Draw</string>
     <string name="crop">Crop</string>
     <string name="rotate">Rotate</string>
-    <string name="add_image">+ Image</string>
-    <string name="add_text">+ Text</string>
+    <string name="add_image">Image</string>
+    <string name="add_text">Text</string>
     <string name="paste">Paste</string>
     <string name="more">More</string>
     <string name="rotate_left">Rotate left</string>
@@ -57,4 +57,7 @@
     <string name="text_color">Text color</string>
     <string name="second_color">Outline / box color</string>
     <string name="new_image">New picture</string>
+    <string name="erase">Erase</string>
+    <string name="crop_this">Crop this</string>
+    <string name="done">Done</string>
 </resources>
