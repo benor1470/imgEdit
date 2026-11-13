@@ -33,6 +33,20 @@ object Render {
         c.translate(e.xf.cx, e.xf.cy)
         c.rotate(e.xf.rot)
         c.scale(e.xf.sx, e.xf.sy)
+        if (e.erase.isEmpty()) {
+            drawContent(c, e)
+        } else {
+            // Draw the layer on its own, punch the erased strokes out, then put it on the canvas.
+            val pad = max(e.halfW, e.halfH) * 0.25f + 8f
+            c.saveLayer(-e.halfW - pad, -e.halfH - pad, e.halfW + pad, e.halfH + pad, null)
+            drawContent(c, e)
+            for (s in e.erase) c.drawPath(s.path, s.paint)
+            c.restore()
+        }
+        c.restore()
+    }
+
+    private fun drawContent(c: Canvas, e: El) {
         when (e) {
             is ImageEl -> c.drawBitmap(e.bitmap, -e.halfW, -e.halfH, bitmapPaint)
             is TextEl -> {
@@ -49,7 +63,6 @@ object Render {
             }
             is StrokeEl -> c.drawPath(e.path, e.paint)
         }
-        c.restore()
     }
 
     /** Small preview of the document on a white background. */

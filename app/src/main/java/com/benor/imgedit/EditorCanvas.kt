@@ -88,7 +88,6 @@ fun EditorCanvas(st: EditorState, modifier: Modifier = Modifier) {
             .pointerInput(Unit) { editorGestures(st) }
     ) {
         val doc = st.doc ?: return@Canvas
-        @Suppress("UNUSED_VARIABLE") val redrawOnBitmapEdit = st.tick
         val vs = st.vScale
         val off = st.vOff
         val dw = doc.w.toFloat()
@@ -167,6 +166,16 @@ fun EditorCanvas(st: EditorState, modifier: Modifier = Modifier) {
                 for (p in kept) c.drawCircle(p.x, p.y, 10f * density, handleFill)
             }
 
+            // Eraser outline under the finger
+            val ep = st.erasePos
+            if (ep != null && st.tool == Tool.Erase) {
+                val r = max(st.brushWidth * vs / 2f, 2f * density)
+                cropPaint.strokeWidth = 1.5f * density
+                c.drawCircle(ep.x, ep.y, r, cropPaint)
+                selPaint.strokeWidth = 1.5f * density
+                c.drawCircle(ep.x, ep.y, r + 1.5f * density, selPaint)
+            }
+
             // Crop frame
             val crop = st.crop
             if (crop != null && st.tool == Tool.Crop) {
@@ -209,7 +218,9 @@ private suspend fun PointerInputScope.editorGestures(st: EditorState) {
         var startXf: Xf? = null
         var cropPart = -1 // 0..3 = corner (TL, TR, BR, BL), 4 = move the whole frame
         var lastPixel = Offset.Zero // last touch position in the selected picture's pixels
-        var eraser: Eraser? = null
+        val erasePts = ArrayList<Float>() // current eraser stroke, in the layer's local coordinates
+        var eraseBase: El? = null // the layer as it was before this stroke
+        var eraseWidth = 1f
 
         when (st.tool) {
             Tool.Select -> {
@@ -266,13 +277,32 @@ private suspend fun PointerInputScope.editorGestures(st: EditorState) {
                 drag = if (cropPart >= 0) Drag.ElCropEdit else Drag.Pan
             }
             Tool.Erase -> {
-                val e = d0.find(st.selectedId)
-                if (e is ImageEl) {
-                    lastPixel = st.docToBitmap(e, startDoc)
+                // Erase from the selected layer; with nothing selected, from the layer under the finger.
+                var target = d0.find(st.selectedId)
+                if (target == null) {
+                    target = d0.els.lastOrNull { it.contains(startDoc.x, startDoc.y, 0f) }
+                    if (target != null) st.selectedId = target.id
+                }
+                if (target != null) {
+                    val lp = st.docToLocal(target, startDoc)
+                    erasePts.add(lp.x)
+                    erasePts.add(lp.y)
+                    eraseBase = target
+                    eraseWidth = st.eraseWidthFor(target)
+                    st.erasePos = down.position
                     drag = Drag.Erase
                 } else {
                     drag = Drag.Pan
                 }
+            }
+        }
+
+        /** Show the eraser stroke so far on the layer. */
+        fun applyErase() {
+            val cur = st.doc
+            val base = eraseBase
+            if (cur != null && base != null) {
+                st.doc = cur.replace(base.withErase(base.erase + EraseStroke(erasePts.toFloatArray(), eraseWidth)))
             }
         }
 
@@ -289,6 +319,7 @@ private suspend fun PointerInputScope.editorGestures(st: EditorState) {
                 if (!multi) {
                     multi = true
                     st.stroke.clear()
+                    st.erasePos = null
                 }
                 val zoom = ev.calculateZoom()
                 val rotation = ev.calculateRotation()
@@ -353,12 +384,16 @@ private suspend fun PointerInputScope.editorGestures(st: EditorState) {
                                 val si = sin(rad).toFloat()
                                 val lx = vx * co + vy * si
                                 val ly = -vx * si + vy * co
+                                // Dragging a handle across the centre mirrors the element on that axis.
+                                fun signed(v: Float): Float = if (abs(v) < 0.01f) (if (v < 0f) -0.01f else 0.01f) else v
                                 val nx = when (hd) {
-                                    Handle.Right -> x0.copy(sx = max(abs(lx) / sel.halfW, 0.01f))
-                                    Handle.Bottom -> x0.copy(sy = max(abs(ly) / sel.halfH, 0.01f))
+                                    Handle.Right -> x0.copy(sx = signed(lx / sel.halfW))
+                                    Handle.Bottom -> x0.copy(sy = signed(ly / sel.halfH))
                                     Handle.Corner -> {
-                                        val base = hypot(sel.halfW * x0.sx, sel.halfH * x0.sy)
-                                        val k = max(hypot(vx, vy) / max(base, 0.001f), 0.01f)
+                                        // Size follows the finger along the original centre-to-corner line.
+                                        val cx0 = sel.halfW * x0.sx
+                                        val cy0 = sel.halfH * x0.sy
+                                        val k = signed((lx * cx0 + ly * cy0) / max(cx0 * cx0 + cy0 * cy0, 0.0001f))
                                         x0.copy(sx = x0.sx * k, sy = x0.sy * k)
                                     }
                                     Handle.Rotate -> {
@@ -388,12 +423,19 @@ private suspend fun PointerInputScope.editorGestures(st: EditorState) {
                                 lastPixel = px
                             }
                         }
-                        Drag.Erase -> if (sel is ImageEl) {
-                            val px = st.docToBitmap(sel, p)
-                            val er = eraser ?: st.beginErase()
-                            eraser = er
-                            if (er != null) st.eraseLine(er, lastPixel, px)
-                            lastPixel = px
+                        Drag.Erase -> {
+                            val base = eraseBase
+                            if (base != null) {
+                                if (!snapped) {
+                                    st.snapshot()
+                                    snapped = true
+                                }
+                                val lp = st.docToLocal(base, p)
+                                erasePts.add(lp.x)
+                                erasePts.add(lp.y)
+                                applyErase()
+                                st.erasePos = ch.position
+                            }
                         }
                         Drag.None -> {}
                     }
@@ -405,10 +447,13 @@ private suspend fun PointerInputScope.editorGestures(st: EditorState) {
         // Finger(s) lifted
         if (drag == Drag.Draw) {
             if (multi) st.stroke.clear() else st.finishStroke()
-        } else if (drag == Drag.Erase && !moved && !multi) {
-            // A tap erases one dot.
-            val er = st.beginErase()
-            if (er != null) st.eraseLine(er, lastPixel, lastPixel)
+        } else if (drag == Drag.Erase) {
+            st.erasePos = null
+            if (!moved && !multi) {
+                // A tap erases one dot.
+                st.snapshot()
+                applyErase()
+            }
         } else if (!moved && !multi && drag == Drag.Move) {
             // Tap on a text that was already selected: edit it.
             val e = st.doc?.find(st.selectedId)

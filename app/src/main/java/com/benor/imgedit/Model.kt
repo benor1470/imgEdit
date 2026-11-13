@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.Typeface
 import kotlin.math.abs
 import kotlin.math.max
@@ -33,13 +35,27 @@ object Ids {
  * document can be snapshotted for undo by keeping a reference to it.
  * Local coordinates are centred on (0,0) and span [-halfW..halfW] x [-halfH..halfH].
  */
+/** One pass of the eraser. [pts] is x0,y0,x1,y1,... in the layer's local coordinates. */
+class EraseStroke(val pts: FloatArray, val width: Float) {
+    val path: Path by lazy { smoothPath(pts) }
+    val paint: Paint by lazy {
+        val p = strokePaint(0xFF000000.toInt(), width)
+        p.xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        p
+    }
+}
+
 sealed class El {
     abstract val id: Long
     abstract val xf: Xf
     abstract val locked: Boolean
     abstract val halfW: Float
     abstract val halfH: Float
+
+    /** Eraser strokes on this layer, in its local coordinates. They hide what is under them. */
+    abstract val erase: List<EraseStroke>
     abstract fun edit(xf: Xf = this.xf, locked: Boolean = this.locked, id: Long = this.id): El
+    abstract fun withErase(erase: List<EraseStroke>): El
 
     fun contains(x: Float, y: Float, slop: Float): Boolean {
         val inv = Matrix()
@@ -57,10 +73,12 @@ data class ImageEl(
     override val xf: Xf,
     val bitmap: Bitmap,
     override val locked: Boolean = false,
+    override val erase: List<EraseStroke> = emptyList(),
 ) : El() {
     override val halfW: Float get() = bitmap.width / 2f
     override val halfH: Float get() = bitmap.height / 2f
     override fun edit(xf: Xf, locked: Boolean, id: Long): El = copy(xf = xf, locked = locked, id = id)
+    override fun withErase(erase: List<EraseStroke>): El = copy(erase = erase)
 }
 
 const val LOOK_PLAIN = 0
@@ -87,6 +105,7 @@ data class TextEl(
     /** Outline or box colour. */
     val color2: Int = 0xFF000000.toInt(),
     val align: Int = ALIGN_CENTER,
+    override val erase: List<EraseStroke> = emptyList(),
 ) : El() {
     val paint: Paint by lazy {
         val face = when {
@@ -159,6 +178,7 @@ data class TextEl(
     fun baseline(i: Int): Float = -textHalfH + i * lineH - paint.ascent()
 
     override fun edit(xf: Xf, locked: Boolean, id: Long): El = copy(xf = xf, locked = locked, id = id)
+    override fun withErase(erase: List<EraseStroke>): El = copy(erase = erase)
 }
 
 /** Free-hand line. [pts] is x0,y0,x1,y1,... in local coordinates. */
@@ -169,6 +189,7 @@ data class StrokeEl(
     val color: Int,
     val width: Float,
     override val locked: Boolean = false,
+    override val erase: List<EraseStroke> = emptyList(),
 ) : El() {
     val path: Path by lazy { smoothPath(pts) }
     val paint: Paint by lazy { strokePaint(color, width) }
@@ -186,6 +207,7 @@ data class StrokeEl(
     }
 
     override fun edit(xf: Xf, locked: Boolean, id: Long): El = copy(xf = xf, locked = locked, id = id)
+    override fun withErase(erase: List<EraseStroke>): El = copy(erase = erase)
 }
 
 fun strokePaint(color: Int, width: Float): Paint {

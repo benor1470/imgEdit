@@ -7,7 +7,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Brush
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -56,7 +60,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
@@ -374,4 +381,63 @@ fun VersionsDialog(
             }
         },
     )
+}
+
+/** Eraser icon (the Material icon set has none). */
+val EraserIcon: ImageVector by lazy {
+    ImageVector.Builder(name = "Eraser", defaultWidth = 24.dp, defaultHeight = 24.dp, viewportWidth = 24f, viewportHeight = 24f)
+        .addPath(
+            pathData = addPathNodes(
+                "M16.24,3.56l4.95,4.94c0.78,0.79 0.78,2.05 0,2.84L12,20.53a4.008,4.008 0 0 1 -5.66,0L2.81,17" +
+                    "c-0.78,-0.79 -0.78,-2.05 0,-2.84l10.6,-10.6c0.79,-0.78 2.05,-0.78 2.83,0z" +
+                    "M4.22,15.58l3.54,3.53c0.78,0.79 2.04,0.79 2.83,0l3.53,-3.53l-4.95,-4.95l-4.95,4.95z"
+            ),
+            pathFillType = PathFillType.EvenOdd,
+            fill = SolidColor(Color.Black),
+        )
+        .build()
+}
+
+/** Short name of a layer for the layers list. */
+@Composable
+fun layerLabel(e: El, isBottom: Boolean): String = when (e) {
+    is ImageEl -> stringResource(if (isBottom) R.string.layer_background else R.string.layer_picture)
+    is TextEl -> e.text.replace('\n', ' ').take(30)
+    is StrokeEl -> stringResource(R.string.layer_line)
+}
+
+/** Every element is a layer; the list shows them top first and picks the one to work on. */
+@Composable
+fun LayersPanel(doc: Doc, selectedId: Long?, onSelect: (Long) -> Unit) {
+    val n = doc.els.size
+    LazyColumn(Modifier.fillMaxWidth().heightIn(max = 170.dp)) {
+        items(n, key = { doc.els[n - 1 - it].id }) { row ->
+            val index = n - 1 - row
+            val e = doc.els[index]
+            val on = e.id == selectedId
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .background(if (on) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                    .clickable { onSelect(e.id) }
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                val icon = when (e) {
+                    is ImageEl -> Icons.Filled.Image
+                    is TextEl -> Icons.Filled.TextFields
+                    is StrokeEl -> Icons.Filled.Brush
+                }
+                Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
+                Text(
+                    layerLabel(e, index == 0),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f).padding(horizontal = 10.dp),
+                )
+                if (e.erase.isNotEmpty()) Icon(EraserIcon, contentDescription = null, modifier = Modifier.size(16.dp))
+                if (e.locked) Icon(Icons.Filled.Lock, contentDescription = null, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
 }

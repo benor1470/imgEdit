@@ -57,7 +57,13 @@
     <string name="text_color">Text color</string>
     <string name="second_color">Outline / box color</string>
     <string name="new_image">New picture</string>
-    <string name="erase">Erase</string>
+    <string name="eraser">Eraser</string>
+    <string name="layers">Layers</string>
+    <string name="layer_picture">Picture</string>
+    <string name="layer_line">Drawn line</string>
+    <string name="layer_background">Background picture</string>
+    <string name="erasing_from">Erasing from: %1$s</string>
+    <string name="erase_pick">Touch a layer to erase from it</string>
     <string name="crop_this">Crop this</string>
     <string name="done">Done</string>
 </resources>

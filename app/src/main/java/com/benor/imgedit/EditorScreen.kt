@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.AddPhotoAlternate
@@ -53,6 +52,7 @@ import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
@@ -92,6 +92,7 @@ fun EditorScreen(st: EditorState, initialUri: Uri?) {
     var resizeDialog by remember { mutableStateOf(false) }
     var saveMenu by remember { mutableStateOf(false) }
     var moreMenu by remember { mutableStateOf(false) }
+    var showLayers by remember { mutableStateOf(false) }
     var projects by remember { mutableStateOf<List<ProjectInfo>>(emptyList()) }
     var refresh by remember { mutableStateOf(0) }
     var versionsOf by remember { mutableStateOf<ProjectInfo?>(null) }
@@ -264,6 +265,8 @@ fun EditorScreen(st: EditorState, initialUri: Uri?) {
                     EditorCanvas(st, Modifier.fillMaxSize())
                 }
 
+                if (showLayers) LayersPanel(doc, st.selectedId) { st.selectLayer(it) }
+
                 // ---- context bar: depends on the tool / selection ----
                 when {
                     st.tool == Tool.Draw -> Column(Modifier.fillMaxWidth()) {
@@ -285,21 +288,29 @@ fun EditorScreen(st: EditorState, initialUri: Uri?) {
                         Btn(R.string.cancel, Icons.Filled.Close) { st.endElTool() }
                     }
                     st.tool == Tool.Erase -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Btn(R.string.done, Icons.Filled.Check, selected = true) { st.endElTool() }
-                        val maxW = max(40f, max(doc.w, doc.h) / 6f)
-                        Slider(
-                            value = st.brushWidth.coerceIn(1f, maxW),
-                            onValueChange = { st.brushWidth = it },
-                            valueRange = 1f..maxW,
-                            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                        )
+                        Btn(R.string.done, Icons.Filled.Check, selected = true) { st.pickTool(Tool.Select) }
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text(
+                                if (selected != null) {
+                                    stringResource(R.string.erasing_from, layerLabel(selected, doc.els.firstOrNull() === selected))
+                                } else {
+                                    stringResource(R.string.erase_pick)
+                                },
+                                maxLines = 1,
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                            val maxW = max(40f, max(doc.w, doc.h) / 6f)
+                            Slider(
+                                value = st.brushWidth.coerceIn(1f, maxW),
+                                onValueChange = { st.brushWidth = it },
+                                valueRange = 1f..maxW,
+                            )
+                        }
                     }
                     selected != null -> BarRow {
                         if (selected is TextEl) Btn(R.string.edit, Icons.Filled.Edit, selected = true) { textDialog = selected }
-                        if (selected is ImageEl) {
-                            Btn(R.string.erase, Icons.AutoMirrored.Filled.Backspace) { st.startErase() }
-                            Btn(R.string.crop_this, Icons.Filled.Crop) { st.startElCrop() }
-                        }
+                        Btn(R.string.eraser, EraserIcon) { st.pickTool(Tool.Erase) }
+                        if (selected is ImageEl) Btn(R.string.crop_this, Icons.Filled.Crop) { st.startElCrop() }
                         Btn(R.string.delete, Icons.Filled.Delete) { st.deleteSelected() }
                         Btn(R.string.duplicate, Icons.Filled.ContentCopy) { st.duplicateSelected() }
                         Btn(R.string.forward, Icons.Filled.FlipToFront) { st.reorder(1) }
@@ -316,6 +327,8 @@ fun EditorScreen(st: EditorState, initialUri: Uri?) {
                     Btn(R.string.select, Icons.Filled.TouchApp, selected = st.tool == Tool.Select) { st.pickTool(Tool.Select) }
                     Btn(R.string.add_text, Icons.Filled.TextFields) { textDialog = st.newText() }
                     Btn(R.string.draw, Icons.Filled.Brush, selected = st.tool == Tool.Draw) { st.pickTool(Tool.Draw) }
+                    Btn(R.string.eraser, EraserIcon, selected = st.tool == Tool.Erase) { st.pickTool(Tool.Erase) }
+                    Btn(R.string.layers, Icons.Filled.Layers, selected = showLayers) { showLayers = !showLayers }
                     Btn(R.string.crop, Icons.Filled.Crop, selected = st.tool == Tool.Crop) { st.pickTool(Tool.Crop) }
                     Btn(R.string.rotate, Icons.Filled.RotateRight) { st.rotateAll(true) }
                     Btn(R.string.add_image, Icons.Filled.AddPhotoAlternate) { addLauncher.launch("image/*") }

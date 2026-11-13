@@ -32,7 +32,34 @@ object Svg {
     private fun common(e: El): String {
         val x = e.xf
         val t = "transform=\"translate(${f(x.cx)} ${f(x.cy)}) rotate(${f(x.rot)}) scale(${f(x.sx)} ${f(x.sy)})\""
-        return if (e.locked) "$t ie:locked=\"1\"" else t
+        val sb = StringBuilder(t)
+        if (e.locked) sb.append(" ie:locked=\"1\"")
+        if (e.erase.isNotEmpty()) {
+            // "width:x y x y ...;width:x y ..."
+            sb.append(" ie:erase=\"")
+            e.erase.forEachIndexed { i, s ->
+                if (i > 0) sb.append(';')
+                sb.append(f(s.width)).append(':')
+                for (j in s.pts.indices) {
+                    if (j > 0) sb.append(' ')
+                    sb.append(f(s.pts[j]))
+                }
+            }
+            sb.append('"')
+        }
+        return sb.toString()
+    }
+
+    private fun parseErase(s: String?): List<EraseStroke> {
+        if (s.isNullOrEmpty()) return emptyList()
+        val out = ArrayList<EraseStroke>()
+        for (part in s.split(';')) {
+            val colon = part.indexOf(':')
+            if (colon <= 0) continue
+            val pts = numbers(part.substring(colon + 1))
+            if (pts.size >= 2 && pts.size % 2 == 0) out.add(EraseStroke(pts.toFloatArray(), num(part.substring(0, colon), 10f)))
+        }
+        return out
     }
 
     /**
@@ -173,6 +200,7 @@ object Svg {
                 XmlPullParser.START_TAG -> {
                     val ours = p.getAttributeValue(null, "ie:type") != null
                     val locked = p.getAttributeValue(null, "ie:locked") == "1"
+                    val erase = parseErase(p.getAttributeValue(null, "ie:erase"))
                     when (p.name) {
                         "svg" -> {
                             w = num(p.getAttributeValue(null, "width")).toInt()
@@ -206,7 +234,7 @@ object Svg {
                                         val iy = num(p.getAttributeValue(null, "y"))
                                         Xf(ix + iw / 2f, iy + ih / 2f, iw / bmp.width, ih / bmp.height)
                                     }
-                                    els.add(ImageEl(Ids.next(), xf, bmp, locked))
+                                    els.add(ImageEl(Ids.next(), xf, bmp, locked, erase))
                                 }
                             }
                         }
@@ -221,6 +249,7 @@ object Svg {
                                         parseColor(p.getAttributeValue(null, "stroke")),
                                         num(p.getAttributeValue(null, "stroke-width"), 4f),
                                         locked,
+                                        erase,
                                     )
                                 )
                             }
@@ -240,6 +269,7 @@ object Svg {
                                 num(p.getAttributeValue(null, "ie:look")).toInt(),
                                 parseColor(p.getAttributeValue(null, "ie:color2")),
                                 num(p.getAttributeValue(null, "ie:align")).toInt(),
+                                erase,
                             )
                         }
                         "tspan" -> if (pendingText != null) sb = StringBuilder()
